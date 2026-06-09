@@ -18,7 +18,30 @@ if ($method === 'GET') {
     json_out(['ok' => true, 'session' => $row]);
   }
 
-  // List — most recent 100
+  // Analytics — all sessions with full results, oldest first for charting
+  if (isset($_GET['analytics'])) {
+    $stmt = db()->prepare(
+      'SELECT id, session_date, type, condition_val, athletes_json, exercises_json, results_json, duration_secs
+       FROM sessions WHERE user_id = ? ORDER BY session_date ASC, created_at ASC LIMIT 500'
+    );
+    $stmt->execute([$uid]);
+    $rows = $stmt->fetchAll();
+    $sessions = array_map(function($r) {
+      return [
+        'id'           => (int)$r['id'],
+        'session_date' => $r['session_date'],
+        'type'         => $r['type'],
+        'condition'    => $r['condition_val'],
+        'athletes'     => json_decode($r['athletes_json'], true) ?: [],
+        'exercises'    => json_decode($r['exercises_json'], true) ?: [],
+        'results'      => json_decode($r['results_json'], true) ?: [],
+        'duration_secs'=> (int)$r['duration_secs'],
+      ];
+    }, $rows);
+    json_out(['ok' => true, 'sessions' => $sessions]);
+  }
+
+  // List — most recent 100 (for session log)
   $stmt = db()->prepare(
     'SELECT id, session_date, type, condition_val, notes, athletes_json, duration_secs, created_at
      FROM sessions WHERE user_id = ? ORDER BY session_date DESC, created_at DESC LIMIT 100'

@@ -12,6 +12,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg:        #F7F7F4;
@@ -167,6 +168,15 @@
   .sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
   .sheet-url-hint { font-size: 11px; color: var(--text3); margin-top: 6px; line-height: 1.5; }
+  .stat-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; flex: 1; min-width: 120px; }
+  .stat-chip-val { font-size: 24px; font-weight: 800; font-family: ui-monospace, monospace; color: var(--orange); line-height: 1; }
+  .stat-chip-lbl { font-size: 11px; color: var(--text2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }
+  .pb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .pb-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--text2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 800; border-bottom: 1px solid var(--border); }
+  .pb-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+  .pb-table tr:last-child td { border-bottom: none; }
+  .pb-val { font-family: ui-monospace, monospace; font-weight: 800; color: var(--orange); }
+  .pb-best { background: var(--green-d); color: var(--green) !important; border-radius: 4px; padding: 2px 6px; }
   .conditions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .cond-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text2); font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s; font-family: inherit; }
   .cond-btn.selected { border-color: var(--blue); background: var(--blue-d); color: var(--blue); }
@@ -246,7 +256,7 @@
     <button class="tab active" onclick="showTab('builder')">⚡ Builder</button>
     <button class="tab" onclick="showTab('runner')" id="run-tab" style="display:none">▶ Session</button>
     <button class="tab" onclick="showTab('export')" id="export-tab" style="display:none">📊 Results</button>
-    <button class="tab" onclick="showTab('history'); loadHistory()">📅 History</button>
+    <button class="tab" onclick="showTab('history'); loadAnalytics()">📈 Analytics</button>
     <button class="tab" onclick="showTab('settings')">⚙ Settings</button>
   </div>
 
@@ -375,34 +385,50 @@
     </div>
 
     <div class="card">
-      <div class="card-title">Export to Google Sheets</div>
-      <div style="margin-bottom:14px">
-        <label>Google Apps Script Web App URL</label>
-        <input type="text" id="sheet-url" placeholder="https://script.google.com/macros/s/YOUR_ID/exec">
-        <div class="sheet-url-hint">
-          Paste your Google Apps Script deployment URL here.<br>
-          See Settings tab for setup instructions.
-        </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div class="card-title" style="margin-bottom:0;">Export</div>
       </div>
-      <button class="btn btn-green btn-full" onclick="exportToSheets()" id="export-btn">
-        📊 Export to Google Sheets
-      </button>
-      <div id="export-status" style="margin-top:10px; font-size:13px; text-align:center;"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Download CSV (backup)</div>
-      <button class="btn btn-outline btn-full" onclick="downloadCSV()">⬇ Download CSV</button>
+      <button class="btn btn-outline btn-full" onclick="downloadCSV()">⬇ Download Session CSV</button>
+      <div style="margin-top:10px;">
+        <button class="btn btn-orange btn-full" onclick="showTab('history'); loadAnalytics()">📈 View Analytics →</button>
+      </div>
     </div>
 
   </div>
 
-  <!-- ══ TAB: HISTORY ══ -->
+  <!-- ══ TAB: HISTORY / ANALYTICS ══ -->
   <div id="tab-history" style="display:none">
+
+    <!-- Summary stats -->
+    <div id="analytics-summary" style="display:flex; gap:10px; padding:14px 18px 0; flex-wrap:wrap;"></div>
+
+    <!-- Sprint chart -->
+    <div class="card" id="sprint-chart-card" style="display:none">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+        <div class="card-title" style="margin-bottom:0;">Sprint Performance</div>
+        <div id="sprint-ex-filter" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
+      <div style="position:relative; height:240px;">
+        <canvas id="sprint-chart"></canvas>
+      </div>
+      <div style="font-size:11px; color:var(--text3); text-align:center; margin-top:6px;">Lower = faster · each point is a session best</div>
+    </div>
+
+    <!-- Personal bests -->
+    <div class="card" id="pb-card" style="display:none">
+      <div class="card-title">Personal Bests</div>
+      <div id="pb-table"></div>
+    </div>
+
+    <!-- Session log -->
     <div class="card">
-      <div class="card-title">Session History</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;">Session Log</div>
+        <button class="btn btn-outline" style="font-size:12px; padding:7px 12px;" onclick="downloadAllCSV()">⬇ All Data CSV</button>
+      </div>
       <div id="history-list"><div style="color:var(--text2); font-size:14px; text-align:center; padding:24px 0;">Loading…</div></div>
     </div>
+
   </div>
 
   <!-- ══ TAB: SETTINGS ══ -->
@@ -419,36 +445,6 @@
           <div><button class="btn btn-orange" onclick="addAthlete()">Add</button></div>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Google Sheets Setup</div>
-      <div style="color:var(--text2); font-size:13px; line-height:1.8;">
-        <p style="margin-bottom:12px">Follow these steps to connect your Google Sheet:</p>
-        <ol style="padding-left:18px; margin-bottom:14px;">
-          <li>Open your Google Sheet</li>
-          <li>Click <strong>Extensions → Apps Script</strong></li>
-          <li>Delete any existing code and paste the code below</li>
-          <li>Click <strong>Deploy → New deployment</strong></li>
-          <li>Type: Web App · Execute as: Me · Access: Anyone</li>
-          <li>Click Deploy and copy the URL</li>
-          <li>Paste the URL in the Export tab</li>
-        </ol>
-        <p style="margin-bottom:12px; color:var(--amber)">
-          After changing this script later, use Deploy → Manage deployments → Edit → Version: New version → Deploy.
-        </p>
-        <div style="background:var(--bg); border-radius:8px; padding:14px; font-family:monospace; font-size:11px; color:var(--text2); overflow-x:auto; border:1px solid var(--border);">
-          <pre id="apps-script-code"></pre>
-        </div>
-        <button class="btn btn-outline" style="margin-top:10px; font-size:12px" onclick="copyScript()">📋 Copy Script</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Sheet URL</div>
-      <label>Saved Google Apps Script URL</label>
-      <input type="text" id="sheet-url-settings" placeholder="Paste URL here to save it">
-      <button class="btn btn-orange" style="margin-top:10px" onclick="saveSheetUrl()">Save URL</button>
     </div>
 
   </div>
@@ -2219,31 +2215,7 @@ function buildExportRows() {
   return rows;
 }
 
-async function exportToSheets() {
-  const url = document.getElementById('sheet-url').value.trim();
-  if (!url) { document.getElementById('export-status').innerHTML='<span style="color:var(--red)">⚠️ Paste your Google Apps Script URL first</span>'; return; }
-  const rows = buildExportRows();
-  const btn = document.getElementById('export-btn');
-  const status = document.getElementById('export-status');
-  const payload = new URLSearchParams();
-  payload.set('payload', JSON.stringify({ rows }));
-  btn.disabled=true; btn.textContent='Exporting...'; status.innerHTML='';
-  try {
-    await fetch(url, {
-      method:'POST',
-      body: payload,
-      mode: 'no-cors'
-    });
-    status.innerHTML='<span style="color:var(--green)">✓ Sent to Google Sheets. If rows do not appear, redeploy the Apps Script from Settings.</span>';
-    localStorage.setItem('trainr_sheet_url', url);
-    // save to settings too
-    document.getElementById('sheet-url-settings').value = url;
-    savedSheetUrl = url;
-  } catch(e) {
-    status.innerHTML='<span style="color:var(--red)">⚠️ Error — check your URL and try again. Make sure the script is deployed.</span>';
-  }
-  btn.disabled=false; btn.textContent='📊 Export to Google Sheets';
-}
+// exportToSheets removed — replaced by in-app analytics
 
 function downloadCSV() {
   const rows = buildExportRows();
@@ -2262,58 +2234,7 @@ function downloadCSV() {
 // ══════════════════════════════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════════════════════════════
-function saveSheetUrl() {
-  const url = document.getElementById('sheet-url-settings').value.trim();
-  localStorage.setItem('trainr_sheet_url', url);
-  savedSheetUrl = url;
-  document.getElementById('sheet-url').value = url;
-  alert('URL saved ✓');
-}
-
-const APPS_SCRIPT = `function doGet() {
-  return ContentService
-    .createTextOutput(JSON.stringify({success:true, app:'Trainr sheet sync'}))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  if (!spreadsheet) {
-    return jsonResponse({success:false, message:'Open the script from Extensions > Apps Script inside your Google Sheet.'});
-  }
-
-  const sheet = spreadsheet.getActiveSheet();
-  const body = (e.parameter && e.parameter.payload) || (e.postData && e.postData.contents) || '{}';
-  const data = JSON.parse(body);
-  const rows = data.rows || [];
-  const allCols = ['athlete','date','sessionType','conditions','exercise',
-                   'category','attempt','set','value','notes','sessionNotes'];
-  // Write header row if sheet is empty
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['Timestamp',...allCols]);
-  }
-  if (!rows.length) {
-    return jsonResponse({success:false, count:0, message:'No rows received'});
-  }
-  rows.forEach(row => {
-    sheet.appendRow([new Date(),...allCols.map(c=>row[c]||'')]);
-  });
-  SpreadsheetApp.flush();
-  return jsonResponse({success:true, count:rows.length});
-}
-
-function jsonResponse(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
-
-function renderAppsScript() {
-  document.getElementById('apps-script-code').textContent = APPS_SCRIPT;
-}
-function copyScript() {
-  navigator.clipboard.writeText(APPS_SCRIPT).then(()=>{ alert('Script copied to clipboard ✓'); });
-}
+// Google Sheets removed — analytics are in-app
 
 // ══════════════════════════════════════════════════════════
 // AUTH
@@ -2422,45 +2343,225 @@ async function doLogout() {
 }
 
 // ══════════════════════════════════════════════════════════
-// HISTORY
+// ANALYTICS
 // ══════════════════════════════════════════════════════════
-let _historyLoaded = false;
+const SPRINT_SLUGS = ['sprint-20m','sprint-30m','sprint-40m','flying-20m','suicide-runs'];
+const ATHLETE_PALETTE = ['#FC4C02','#2B77C0','#1DBE8A','#725AC1','#D87900','#D83B34'];
+let analyticsCache = null;
+let sprintChartInstance = null;
+let activeSprintSlug = null;
 
-async function loadHistory() {
+async function loadAnalytics() {
   if (!currentUser) return;
-  const el = document.getElementById('history-list');
-  el.innerHTML = '<div style="color:var(--text2); font-size:14px; text-align:center; padding:24px 0;">Loading…</div>';
+  document.getElementById('history-list').innerHTML =
+    '<div style="color:var(--text2); font-size:14px; text-align:center; padding:24px 0;">Loading…</div>';
+
   try {
-    const res = await fetch('api/sessions.php', { credentials: 'include' });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-    renderHistory(data.sessions || []);
+    const [listRes, fullRes] = await Promise.all([
+      fetch('api/sessions.php', { credentials: 'include' }),
+      fetch('api/sessions.php?analytics=1', { credentials: 'include' }),
+    ]);
+    const [listData, fullData] = await Promise.all([listRes.json(), fullRes.json()]);
+    if (!listData.ok) throw new Error(listData.error);
+
+    const listSessions = listData.sessions || [];
+    const fullSessions = fullData.ok ? (fullData.sessions || []) : [];
+    analyticsCache = { list: listSessions, full: fullSessions };
+
+    renderSummary(listSessions);
+    renderSprintChart(fullSessions);
+    renderPBs(fullSessions);
+    renderSessionLog(listSessions);
   } catch(e) {
-    el.innerHTML = '<div style="color:var(--red); font-size:13px; padding:16px 0;">Could not load history — ' + e.message + '</div>';
+    document.getElementById('history-list').innerHTML =
+      `<div style="color:var(--red); font-size:13px; padding:16px 0;">Could not load analytics — ${e.message}</div>`;
   }
 }
 
-function renderHistory(sessions) {
+function renderSummary(sessions) {
+  const el = document.getElementById('analytics-summary');
+  if (!sessions.length) { el.innerHTML = ''; return; }
+  const totalMins = Math.round(sessions.reduce((s,r) => s + (r.duration_secs||0), 0) / 60);
+  const athleteSet = new Set(sessions.flatMap(s => s.athletes || []));
+  const h = Math.floor(totalMins / 60), m = totalMins % 60;
+  el.innerHTML = [
+    { val: sessions.length, lbl: 'Sessions' },
+    { val: h > 0 ? `${h}h ${m}m` : `${m}m`, lbl: 'Total time' },
+    { val: athleteSet.size, lbl: athleteSet.size === 1 ? 'Athlete' : 'Athletes' },
+  ].map(c => `<div class="stat-chip"><div class="stat-chip-val">${c.val}</div><div class="stat-chip-lbl">${c.lbl}</div></div>`).join('');
+}
+
+function computeSprintData(sessions) {
+  const data = {};
+  sessions.forEach(session => {
+    (session.results || []).forEach(res => {
+      if (!SPRINT_SLUGS.includes(res.exSlug)) return;
+      Object.entries(res.athletes || {}).forEach(([athlete, ar]) => {
+        const times = (ar.attempts || []).map(t => parseFloat(t)).filter(t => !isNaN(t) && t > 0);
+        if (!times.length) return;
+        const best = Math.min.apply(null, times);
+        if (!data[res.exSlug]) data[res.exSlug] = {};
+        if (!data[res.exSlug][athlete]) data[res.exSlug][athlete] = [];
+        data[res.exSlug][athlete].push({ date: session.session_date, best });
+      });
+    });
+  });
+  return data;
+}
+
+function renderSprintChart(sessions) {
+  const sprintData = computeSprintData(sessions);
+  const card = document.getElementById('sprint-chart-card');
+  const slugsWithData = Object.keys(sprintData);
+  if (!slugsWithData.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const exNames = { 'sprint-20m':'20m', 'sprint-30m':'30m', 'sprint-40m':'40m', 'flying-20m':'Flying 20m', 'suicide-runs':'Suicides' };
+  if (!activeSprintSlug || !sprintData[activeSprintSlug]) activeSprintSlug = slugsWithData[0];
+
+  // Filter buttons
+  document.getElementById('sprint-ex-filter').innerHTML = slugsWithData.map(slug =>
+    `<button class="cond-btn ${slug===activeSprintSlug?'selected':''}" onclick="switchSprintChart('${slug}')">${exNames[slug]||slug}</button>`
+  ).join('');
+
+  buildSprintChart(sprintData[activeSprintSlug]);
+}
+
+function switchSprintChart(slug) {
+  activeSprintSlug = slug;
+  if (!analyticsCache) return;
+  const sprintData = computeSprintData(analyticsCache.full);
+  document.querySelectorAll('#sprint-ex-filter .cond-btn').forEach(b => {
+    b.classList.toggle('selected', b.getAttribute('onclick').includes(`'${slug}'`));
+  });
+  buildSprintChart(sprintData[slug] || {});
+}
+
+function buildSprintChart(athleteData) {
+  const ctx = document.getElementById('sprint-chart').getContext('2d');
+  if (sprintChartInstance) sprintChartInstance.destroy();
+
+  const allAthletes = Object.keys(athleteData);
+  const allDates = [...new Set(
+    allAthletes.flatMap(a => athleteData[a].map(p => p.date))
+  )].sort();
+
+  const datasets = allAthletes.map((athlete, i) => {
+    const byDate = {};
+    athleteData[athlete].forEach(p => { byDate[p.date] = p.best; });
+    return {
+      label: athlete,
+      data: allDates.map(d => byDate[d] ?? null),
+      borderColor: ATHLETE_PALETTE[i % ATHLETE_PALETTE.length],
+      backgroundColor: ATHLETE_PALETTE[i % ATHLETE_PALETTE.length] + '22',
+      pointBackgroundColor: ATHLETE_PALETTE[i % ATHLETE_PALETTE.length],
+      pointRadius: 5, pointHoverRadius: 7,
+      tension: 0.3, spanGaps: true, borderWidth: 2.5,
+    };
+  });
+
+  sprintChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: allDates.map(d => {
+        const dt = new Date(d + 'T12:00:00');
+        return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      }),
+      datasets,
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14, font: { size: 12, weight: '700' } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y + 's' : '—'}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: {
+          title: { display: true, text: 'Time (s)', font: { size: 11 }, color: '#6F6F76' },
+          ticks: { font: { size: 11 }, callback: v => v + 's' },
+          grid: { color: '#E6E6E2' },
+        },
+      },
+    },
+  });
+}
+
+function renderPBs(sessions) {
+  const sprintData = computeSprintData(sessions);
+  const card = document.getElementById('pb-card');
+  const slugsWithData = Object.keys(sprintData);
+  if (!slugsWithData.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const exNames = { 'sprint-20m':'20m Sprint', 'sprint-30m':'30m Sprint', 'sprint-40m':'40m Sprint', 'flying-20m':'Flying 20m', 'suicide-runs':'Suicides' };
+  const allAthletes = [...new Set(slugsWithData.flatMap(s => Object.keys(sprintData[s])))];
+
+  // Find overall best per slug per athlete
+  const pbs = {};
+  slugsWithData.forEach(slug => {
+    Object.entries(sprintData[slug]).forEach(([athlete, pts]) => {
+      if (!pbs[athlete]) pbs[athlete] = {};
+      pbs[athlete][slug] = Math.min.apply(null, pts.map(p => p.best));
+    });
+  });
+
+  // Find overall best per slug (for highlighting)
+  const globalBest = {};
+  slugsWithData.forEach(slug => {
+    const all = allAthletes.map(a => pbs[a]?.[slug]).filter(v => v != null);
+    if (all.length) globalBest[slug] = Math.min.apply(null, all);
+  });
+
+  const tbody = allAthletes.map(athlete =>
+    `<tr>
+      <td style="font-weight:800; padding:10px;">${athlete}</td>
+      ${slugsWithData.map(slug => {
+        const v = pbs[athlete]?.[slug];
+        if (v == null) return `<td style="padding:10px; color:var(--text3);">—</td>`;
+        const isBest = globalBest[slug] === v && allAthletes.length > 1;
+        return `<td style="padding:10px;"><span class="pb-val${isBest?' pb-best':''}">${v}s</span></td>`;
+      }).join('')}
+    </tr>`
+  ).join('');
+
+  document.getElementById('pb-table').innerHTML = `
+    <table class="pb-table">
+      <thead><tr>
+        <th>Athlete</th>
+        ${slugsWithData.map(s => `<th>${exNames[s]||s}</th>`).join('')}
+      </tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>
+    ${allAthletes.length > 1 ? '<div style="font-size:11px; color:var(--green); margin-top:8px;">Green = current best across athletes</div>' : ''}`;
+}
+
+function renderSessionLog(sessions) {
   const el = document.getElementById('history-list');
   if (!sessions.length) {
     el.innerHTML = '<div style="color:var(--text2); font-size:14px; text-align:center; padding:28px 0;">No sessions yet. Complete a session to see it here.</div>';
     return;
   }
   el.innerHTML = sessions.map(s => {
-    const athletes = (s.athletes || []).join(' + ');
+    const athleteStr = (s.athletes || []).join(' + ');
     const mins = Math.floor((s.duration_secs||0)/60);
     const secs = String((s.duration_secs||0)%60).padStart(2,'0');
     const d = new Date(s.session_date + 'T12:00:00');
     const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
     return `<div style="border-bottom:1px solid var(--border); padding:14px 0;" id="hist-${s.id}">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
         <div style="flex:1; min-width:0;">
           <div style="font-weight:700; font-size:14px;">${dateStr} · ${s.type}</div>
-          <div style="font-size:12px; color:var(--text2); margin-top:2px;">${athletes} · ${mins}:${secs} · ${s.condition_val}</div>
+          <div style="font-size:12px; color:var(--text2); margin-top:2px;">${athleteStr} · ${mins}:${secs} · ${s.condition_val}</div>
         </div>
         <div style="display:flex; gap:6px; flex-shrink:0;">
           <button class="btn btn-outline" style="padding:6px 10px; font-size:12px;" onclick="loadSessionAsTemplate(${s.id})">Use as template</button>
-          <button class="btn-ghost" style="font-size:13px;" onclick="toggleHistDetail(${s.id})">▼</button>
+          <button class="btn-ghost" style="font-size:14px;" onclick="toggleHistDetail(${s.id})">▼</button>
         </div>
       </div>
       <div id="hist-detail-${s.id}" style="display:none; margin-top:12px;"></div>
@@ -2472,7 +2573,7 @@ async function toggleHistDetail(id) {
   const el = document.getElementById('hist-detail-'+id);
   if (el.style.display !== 'none') { el.style.display = 'none'; return; }
   el.style.display = '';
-  if (el.innerHTML) return; // already loaded
+  if (el.innerHTML) return;
   el.innerHTML = '<div style="color:var(--text2); font-size:12px;">Loading…</div>';
   try {
     const res = await fetch('api/sessions.php?id='+id, { credentials: 'include' });
@@ -2480,18 +2581,26 @@ async function toggleHistDetail(id) {
     if (!data.ok) throw new Error(data.error);
     const s = data.session;
     const roster = s.athletes || [];
-    const results = s.results || [];
-    const rows = results.flatMap(res => roster.map(athlete => {
+    const rows = (s.results || []).flatMap(res => roster.map(athlete => {
       const ar = (res.athletes || {})[athlete] || {};
       let val = '';
       if (ar.attempts && ar.attempts.filter(Boolean).length) {
-        val = ar.attempts.filter(Boolean).map((v,i)=>`${i+1}: ${v}`).join(' · ');
+        const times = ar.attempts.filter(Boolean);
+        const best = Math.min.apply(null, times.map(Number));
+        val = times.map((v,i)=>`${i+1}: ${v}s`).join(' · ') + (times.length > 1 ? ` <strong style="color:var(--orange)"> Best: ${best}s</strong>` : '');
       } else if (ar.sets && ar.sets.filter(Boolean).length) {
         val = ar.sets.filter(Boolean).map((v,i)=>`Set ${i+1}: ${v}`).join(' · ');
       }
-      return `<tr><td style="padding:4px 8px 4px 0;">${athlete}</td><td style="padding:4px 8px;">${res.exName||''}</td><td style="padding:4px 8px; color:var(--orange);">${val||'—'}</td></tr>`;
+      return `<tr><td style="padding:4px 8px 4px 0; font-weight:700;">${athlete}</td><td style="padding:4px 8px;">${res.exName||''}</td><td style="padding:4px 8px;">${val||'—'}</td></tr>`;
     })).join('');
-    el.innerHTML = `<table style="width:100%; font-size:12px; border-collapse:collapse;"><thead><tr><th style="text-align:left; padding:4px 8px 4px 0; color:var(--text2);">Athlete</th><th style="text-align:left; padding:4px 8px; color:var(--text2);">Exercise</th><th style="text-align:left; padding:4px 8px; color:var(--text2);">Results</th></tr></thead><tbody>${rows||'<tr><td colspan="3" style="color:var(--text2);">No results recorded</td></tr>'}</tbody></table>${s.notes?`<div style="margin-top:8px; font-size:12px; color:var(--text2);">Notes: ${s.notes}</div>`:''}`;
+    el.innerHTML = `<table style="width:100%; font-size:12px; border-collapse:collapse;">
+      <thead><tr>
+        <th style="text-align:left; padding:4px 8px 4px 0; color:var(--text2); font-size:11px; text-transform:uppercase;">Athlete</th>
+        <th style="text-align:left; padding:4px 8px; color:var(--text2); font-size:11px; text-transform:uppercase;">Exercise</th>
+        <th style="text-align:left; padding:4px 8px; color:var(--text2); font-size:11px; text-transform:uppercase;">Results</th>
+      </tr></thead>
+      <tbody>${rows||'<tr><td colspan="3" style="color:var(--text2); padding:8px 0;">No results recorded</td></tr>'}</tbody>
+    </table>${s.notes?`<div style="margin-top:8px; font-size:12px; color:var(--text2);">Notes: ${s.notes}</div>`:''}`;
   } catch(e) {
     el.innerHTML = '<div style="color:var(--red); font-size:12px;">Error loading details</div>';
   }
@@ -2521,6 +2630,33 @@ async function loadSessionAsTemplate(id) {
   } catch(e) {
     alert('Could not load session as template');
   }
+}
+
+function downloadAllCSV() {
+  if (!analyticsCache) return;
+  const cols = ['date','sessionType','condition','athletes','exercise','category','athlete','attempt','set','value','notes'];
+  const rows = [cols.join(',')];
+  (analyticsCache.full || []).forEach(session => {
+    const sessionAthletes = (session.athletes || []).join(' + ');
+    (session.results || []).forEach(res => {
+      (session.athletes || []).forEach(athlete => {
+        const ar = (res.athletes || {})[athlete] || {};
+        const base = [session.session_date, session.type, session.condition, sessionAthletes, res.exName||'', res.exCat||'', athlete];
+        if (ar.attempts && ar.attempts.filter(Boolean).length) {
+          ar.attempts.filter(Boolean).forEach((v,i) => rows.push([...base, i+1, '', v, ar.notes||''].map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')));
+        } else if (ar.sets && ar.sets.filter(Boolean).length) {
+          ar.sets.filter(Boolean).forEach((v,i) => rows.push([...base, '', i+1, v, ar.notes||''].map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')));
+        } else {
+          rows.push([...base, '', '', '', ar.notes||''].map(c=>`"${String(c).replace(/"/g,'""')}"`).join(','));
+        }
+      });
+    });
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `trainr-all-sessions-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
 }
 </script>
 </body>
