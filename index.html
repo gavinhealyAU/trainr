@@ -302,6 +302,17 @@
       </div>
     </div>
 
+    <!-- COPY FROM PAST SESSION -->
+    <div style="text-align:center; margin:-4px 0 4px;">
+      <button class="btn-ghost" style="font-size:13px; color:var(--text2);" onclick="toggleCopyFromPanel()">📋 Copy from past session</button>
+    </div>
+    <div id="copy-from-panel" style="display:none; margin:0 4px 8px;">
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px;">
+        <div style="font-size:13px; font-weight:700; color:var(--text2); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.3px; font-size:11px;">Recent sessions — copies exercises only, keeps your selected date</div>
+        <div id="copy-from-list"><div style="color:var(--text2); font-size:13px;">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- ADD EXERCISE -->
     <div class="card">
       <div class="card-title">Add Exercise</div>
@@ -2547,6 +2558,7 @@ function renderSessionLog(sessions) {
     el.innerHTML = '<div style="color:var(--text2); font-size:14px; text-align:center; padding:28px 0;">No sessions yet. Complete a session to see it here.</div>';
     return;
   }
+  const today = new Date().toISOString().split('T')[0];
   el.innerHTML = sessions.map(s => {
     const athleteStr = (s.athletes || []).join(' + ');
     const mins = Math.floor((s.duration_secs||0)/60);
@@ -2560,13 +2572,36 @@ function renderSessionLog(sessions) {
           <div style="font-size:12px; color:var(--text2); margin-top:2px;">${athleteStr} · ${mins}:${secs} · ${s.condition_val}</div>
         </div>
         <div style="display:flex; gap:6px; flex-shrink:0;">
-          <button class="btn btn-outline" style="padding:6px 10px; font-size:12px;" onclick="loadSessionAsTemplate(${s.id})">Use as template</button>
+          <button class="btn btn-outline" style="padding:6px 10px; font-size:12px;" onclick="toggleCopyDate(${s.id})">Copy to date…</button>
           <button class="btn-ghost" style="font-size:14px;" onclick="toggleHistDetail(${s.id})">▼</button>
+        </div>
+      </div>
+      <div class="copy-date-row" id="copy-date-${s.id}" style="display:none; margin-top:10px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:var(--surface); border-radius:10px; padding:10px 12px; border:1px solid var(--border);">
+          <span style="font-size:13px; color:var(--text2); white-space:nowrap;">Copy to:</span>
+          <input type="date" id="copy-date-input-${s.id}" value="${today}" style="flex:1; min-width:130px; font-size:13px; padding:6px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text);">
+          <button class="btn btn-orange" style="padding:6px 16px; font-size:13px; white-space:nowrap;" onclick="confirmCopySession(${s.id})">→ Open in Builder</button>
         </div>
       </div>
       <div id="hist-detail-${s.id}" style="display:none; margin-top:12px;"></div>
     </div>`;
   }).join('');
+}
+
+function toggleCopyDate(id) {
+  const el = document.getElementById('copy-date-'+id);
+  if (!el) return;
+  const showing = el.style.display !== 'none';
+  document.querySelectorAll('.copy-date-row').forEach(e => { e.style.display = 'none'; });
+  if (!showing) {
+    el.style.display = '';
+    document.getElementById('copy-date-input-'+id)?.focus();
+  }
+}
+
+async function confirmCopySession(id) {
+  const date = document.getElementById('copy-date-input-'+id)?.value;
+  await loadSessionAsTemplate(id, date);
 }
 
 async function toggleHistDetail(id) {
@@ -2606,7 +2641,7 @@ async function toggleHistDetail(id) {
   }
 }
 
-async function loadSessionAsTemplate(id) {
+async function loadSessionAsTemplate(id, date) {
   try {
     const res = await fetch('api/sessions.php?id='+id, { credentials: 'include' });
     const data = await res.json();
@@ -2624,12 +2659,53 @@ async function loadSessionAsTemplate(id) {
       return item;
     }).filter(Boolean);
     if (s.type) document.getElementById('session-type').value = s.type;
+    if (date) document.getElementById('session-date').value = date;
     renderSessionList();
     saveDraft();
     showTab('builder');
   } catch(e) {
     alert('Could not load session as template');
   }
+}
+
+let _copyFromCache = null;
+
+async function toggleCopyFromPanel() {
+  const panel = document.getElementById('copy-from-panel');
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  if (_copyFromCache) { renderCopyFromList(_copyFromCache); return; }
+  const listEl = document.getElementById('copy-from-list');
+  listEl.innerHTML = '<div style="color:var(--text2); font-size:13px;">Loading…</div>';
+  try {
+    const res = await fetch('api/sessions.php', { credentials: 'include' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    _copyFromCache = data.sessions || [];
+    renderCopyFromList(_copyFromCache);
+  } catch(e) {
+    listEl.innerHTML = '<div style="color:var(--red); font-size:13px;">Could not load sessions</div>';
+  }
+}
+
+function renderCopyFromList(sessions) {
+  const listEl = document.getElementById('copy-from-list');
+  if (!sessions.length) {
+    listEl.innerHTML = '<div style="color:var(--text2); font-size:13px;">No past sessions yet.</div>';
+    return;
+  }
+  listEl.innerHTML = sessions.map(s => {
+    const d = new Date(s.session_date + 'T12:00:00');
+    const dateStr = d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    const athleteStr = (s.athletes || []).join(', ');
+    return `<div style="display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); gap:8px; flex-wrap:wrap;">
+      <div style="min-width:0;">
+        <div style="font-weight:700; font-size:13px;">${dateStr} · ${s.type}</div>
+        <div style="font-size:12px; color:var(--text2);">${athleteStr}</div>
+      </div>
+      <button class="btn btn-outline" style="font-size:12px; padding:6px 12px; flex-shrink:0;" onclick="loadSessionAsTemplate(${s.id}); document.getElementById('copy-from-panel').style.display='none';">Copy exercises</button>
+    </div>`;
+  }).join('');
 }
 
 function downloadAllCSV() {
