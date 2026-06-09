@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../config.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-  session_set_cookie_params(['samesite' => 'Lax', 'httponly' => true]);
+  session_set_cookie_params(0, '/', '', false, true);
   session_start();
 }
 
@@ -55,7 +55,7 @@ if ($method === 'POST') {
       $_SESSION['user_id'] = $id;
       json_out(['ok' => true, 'user' => ['id' => $id, 'name' => $name, 'email' => $email]]);
     } catch (PDOException $e) {
-      if (str_contains($e->getMessage(), 'Duplicate')) {
+      if (strpos($e->getMessage(), 'Duplicate') !== false) {
         json_out(['ok' => false, 'error' => 'An account with that email already exists'], 409);
       }
       json_out(['ok' => false, 'error' => 'Registration failed'], 500);

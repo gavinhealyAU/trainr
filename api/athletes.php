@@ -22,14 +22,13 @@ if ($method === 'POST') {
   $pdo->beginTransaction();
   try {
     // Soft sync: upsert each athlete, remove ones not in the list
-    $names = array_map(fn($a) => trim($a['name'] ?? ''), $incoming);
-    $names = array_filter($names);
+    $names = array_values(array_filter(array_map(function($a) { return trim($a['name'] ?? ''); }, $incoming)));
 
     if ($names) {
       // Delete athletes not in the new list
       $placeholders = implode(',', array_fill(0, count($names), '?'));
       $del = $pdo->prepare("DELETE FROM athletes WHERE user_id = ? AND name NOT IN ($placeholders)");
-      $del->execute([$uid, ...$names]);
+      $del->execute(array_merge([$uid], $names));
     } else {
       $pdo->prepare('DELETE FROM athletes WHERE user_id = ?')->execute([$uid]);
     }
