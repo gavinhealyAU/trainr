@@ -260,9 +260,6 @@
         <div class="field">
           <label>Athlete</label>
           <select id="athlete-select">
-            <option value="Rory">Rory (9)</option>
-            <option value="Joey">Joey (11)</option>
-            <option value="Rita">Rita (6)</option>
           </select>
           <div class="athlete-checks" id="athlete-checks"></div>
         </div>
@@ -656,12 +653,8 @@ const EXERCISES = [
 // ══════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════
-let athletes = [
-  { name:'Rory', age:9 },
-  { name:'Joey', age:11 },
-  { name:'Rita', age:6 },
-];
-let selectedAthletes = ['Rory'];
+let athletes = [];
+let selectedAthletes = [];
 let currentCondition = 'dry';
 let sessionExercises = []; // { ex, reps, sets, duration, attempts }
 let sessionResults    = []; // { exSlug, exName, athletes:{ [name]: {sets:[], attempts:[], notes} } }
@@ -737,16 +730,18 @@ function showTab(name) {
 // ══════════════════════════════════════════════════════════
 async function loadAthletes() {
   try {
-    const saved = JSON.parse(localStorage.getItem(ATHLETES_KEY) || 'null');
-    if (Array.isArray(saved) && saved.length) athletes = saved;
-  } catch(e) {}
-  try {
     const res = await fetch('api/athletes.php', { credentials: 'include' });
     const data = await res.json();
-    if (data.ok && Array.isArray(data.athletes) && data.athletes.length) {
+    if (data.ok && Array.isArray(data.athletes)) {
       athletes = data.athletes;
       localStorage.setItem(ATHLETES_KEY, JSON.stringify(athletes));
+      return;
     }
+  } catch(e) {}
+  // Offline fallback — use localStorage cache
+  try {
+    const saved = JSON.parse(localStorage.getItem(ATHLETES_KEY) || 'null');
+    if (Array.isArray(saved)) athletes = saved;
   } catch(e) {}
 }
 
@@ -2417,6 +2412,10 @@ async function doLogout() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'logout' }) }).catch(() => {});
   currentUser = null;
+  athletes = [];
+  selectedAthletes = [];
+  localStorage.removeItem(ATHLETES_KEY);
+  localStorage.removeItem(RUNNER_KEY);
   document.getElementById('user-badge').style.display = 'none';
   document.getElementById('auth-overlay').style.display = 'flex';
   showLogin();
