@@ -458,6 +458,36 @@
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-title">Custom Exercises</div>
+      <div id="custom-ex-list"></div>
+      <hr class="sep" id="custom-ex-sep" style="display:none;">
+      <div style="margin-top:14px;">
+        <label style="font-weight:800; font-size:13px;">Add Custom Exercise</label>
+        <div class="row" style="margin-top:10px;">
+          <div class="field"><label>Name</label><input type="text" id="cx-name" placeholder="e.g. Box Jumps"></div>
+          <div class="field-sm"><label>Category</label><input type="text" id="cx-cat" placeholder="Custom"></div>
+        </div>
+        <div class="row">
+          <div class="field-sm"><label>Icon (emoji)</label><input type="text" id="cx-icon" placeholder="⭐" maxlength="4" style="font-size:18px; text-align:center;"></div>
+          <div class="field">
+            <label>Type</label>
+            <select id="cx-type" onchange="updateCxTypeFields()">
+              <option value="reps">Reps × Sets</option>
+              <option value="timed">Timed × Sets</option>
+              <option value="sprint">Timed Attempts (sprint-style)</option>
+              <option value="none">Untracked (mark done only)</option>
+            </select>
+          </div>
+        </div>
+        <div id="cx-type-fields" style="margin-top:4px;"></div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-orange" onclick="saveCustomEx()">+ Add Exercise</button>
+          <button class="btn btn-outline" id="cx-cancel-edit" style="display:none; margin-left:8px;" onclick="cancelCxEdit()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
 </div><!-- /app -->
@@ -661,6 +691,7 @@ const EXERCISES = [
 // STATE
 // ══════════════════════════════════════════════════════════
 let athletes = [];
+let customExercises = [];
 let selectedAthletes = [];
 let currentCondition = 'dry';
 let sessionExercises = []; // { ex, reps, sets, duration, attempts }
@@ -703,12 +734,14 @@ async function initApp() {
   const badge = document.getElementById('user-badge');
   if (badge) { badge.style.display = 'flex'; document.getElementById('current-user-name').textContent = user.name; }
 
-  await loadAthletes();
+  await Promise.all([loadAthletes(), loadCustomExercises()]);
   document.getElementById('session-date').value = new Date().toISOString().split('T')[0];
   buildExerciseSelect();
   updateExInputs();
   renderAthleteSelect();
   renderAthleteSettings();
+  renderCustomExList();
+  updateCxTypeFields();
   renderAppsScript();
   if (savedSheetUrl) {
     document.getElementById('sheet-url').value = savedSheetUrl;
@@ -805,6 +838,165 @@ function toggleSessionAthlete(name, checked) {
   renderAthleteChecks();
   updateExInputs();
   saveDraft();
+}
+
+// ══════════════════════════════════════════════════════════
+// CUSTOM EXERCISES
+// ══════════════════════════════════════════════════════════
+function normalizeCustomEx(cx) {
+  return {
+    slug: 'cx-' + cx.id,
+    name: cx.name,
+    cat: cx.cat || 'Custom',
+    icon: cx.icon || '⭐',
+    type: cx.ex_type,
+    defaultReps: cx.default_reps || 10,
+    sets: cx.default_sets || 3,
+    defaultDur: cx.default_dur || 30,
+    unit: cx.dur_unit || 's',
+    attempts: cx.attempts || 3,
+    custom: true,
+    customId: cx.id,
+  };
+}
+
+async function loadCustomExercises() {
+  try {
+    const res = await fetch('api/custom_exercises.php', { credentials: 'include' });
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.exercises)) {
+      customExercises = data.exercises.map(normalizeCustomEx);
+    }
+  } catch(e) {}
+  renderCustomExList();
+}
+
+function renderCustomExList() {
+  const el = document.getElementById('custom-ex-list');
+  const sep = document.getElementById('custom-ex-sep');
+  if (!el) return;
+  if (!customExercises.length) {
+    el.innerHTML = '<div style="color:var(--text2); font-size:13px; padding:4px 0 8px;">No custom exercises yet.</div>';
+    if (sep) sep.style.display = 'none';
+    return;
+  }
+  if (sep) sep.style.display = '';
+  const typeLabel = { reps:'Reps×Sets', timed:'Timed', sprint:'Attempts', none:'Untracked' };
+  el.innerHTML = customExercises.map(ex =>
+    `<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); gap:8px; flex-wrap:wrap;">
+      <div>
+        <span style="font-size:18px; margin-right:6px;">${ex.icon}</span>
+        <strong style="font-size:14px;">${ex.name}</strong>
+        <span style="font-size:12px; color:var(--text2); margin-left:6px;">${ex.cat} · ${typeLabel[ex.type]||ex.type}</span>
+      </div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        <button class="btn-ghost" style="font-size:13px;" onclick="editCustomEx(${ex.customId})">Edit</button>
+        <button class="btn-ghost" style="font-size:13px; color:var(--red);" onclick="deleteCustomEx(${ex.customId})">Delete</button>
+      </div>
+    </div>`
+  ).join('');
+}
+
+let _cxEditId = null;
+
+function updateCxTypeFields() {
+  const type = document.getElementById('cx-type')?.value;
+  const el = document.getElementById('cx-type-fields');
+  if (!el) return;
+  if (type === 'reps') {
+    el.innerHTML = `<div class="row"><div class="field-sm"><label>Default reps</label><input type="number" id="cx-reps" value="10" min="1" max="200"></div><div class="field-sm"><label>Default sets</label><input type="number" id="cx-sets" value="3" min="1" max="10"></div></div>`;
+  } else if (type === 'timed') {
+    el.innerHTML = `<div class="row"><div class="field-sm"><label>Default duration</label><input type="number" id="cx-dur" value="30" min="1"></div><div class="field-sm"><label>Unit</label><select id="cx-unit"><option value="s">seconds</option><option value="mins">minutes</option></select></div><div class="field-sm"><label>Default sets</label><input type="number" id="cx-sets" value="3" min="1" max="10"></div></div>`;
+  } else if (type === 'sprint') {
+    el.innerHTML = `<div class="row"><div class="field-sm"><label>Default attempts</label><input type="number" id="cx-attempts" value="3" min="1" max="10"></div></div>`;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+async function saveCustomEx() {
+  const name = (document.getElementById('cx-name')?.value || '').trim();
+  if (!name) { alert('Exercise name is required'); return; }
+  const type = document.getElementById('cx-type')?.value || 'reps';
+  const body = {
+    action: 'save',
+    name,
+    cat: (document.getElementById('cx-cat')?.value || '').trim() || 'Custom',
+    icon: (document.getElementById('cx-icon')?.value || '').trim() || '⭐',
+    ex_type: type,
+    default_reps: parseInt(document.getElementById('cx-reps')?.value || 10),
+    default_sets: parseInt(document.getElementById('cx-sets')?.value || 3),
+    default_dur:  parseInt(document.getElementById('cx-dur')?.value || 30),
+    dur_unit:     document.getElementById('cx-unit')?.value || 's',
+    attempts:     parseInt(document.getElementById('cx-attempts')?.value || 3),
+  };
+  if (_cxEditId) body.id = _cxEditId;
+  try {
+    const res = await fetch('api/custom_exercises.php', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    cancelCxEdit();
+    await loadCustomExercises();
+    buildExerciseSelect();
+  } catch(e) {
+    alert('Could not save exercise: ' + e.message);
+  }
+}
+
+async function deleteCustomEx(id) {
+  if (!confirm('Delete this custom exercise?')) return;
+  try {
+    await fetch('api/custom_exercises.php', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id }),
+    });
+    customExercises = customExercises.filter(e => e.customId !== id);
+    renderCustomExList();
+    buildExerciseSelect();
+  } catch(e) {}
+}
+
+function editCustomEx(id) {
+  const ex = customExercises.find(e => e.customId === id);
+  if (!ex) return;
+  _cxEditId = id;
+  document.getElementById('cx-name').value = ex.name;
+  document.getElementById('cx-cat').value = ex.cat;
+  document.getElementById('cx-icon').value = ex.icon;
+  document.getElementById('cx-type').value = ex.type;
+  document.getElementById('cx-cancel-edit').style.display = '';
+  document.querySelector('#tab-settings .card:last-child .card-title').textContent = 'Edit Custom Exercise';
+  updateCxTypeFields();
+  // Re-fill type-specific defaults
+  if (ex.type === 'reps') {
+    document.getElementById('cx-reps').value = ex.defaultReps;
+    document.getElementById('cx-sets').value = ex.sets;
+  } else if (ex.type === 'timed') {
+    document.getElementById('cx-dur').value = ex.defaultDur;
+    document.getElementById('cx-unit').value = ex.unit;
+    document.getElementById('cx-sets').value = ex.sets;
+  } else if (ex.type === 'sprint') {
+    document.getElementById('cx-attempts').value = ex.attempts;
+  }
+  document.getElementById('cx-name').focus();
+  showTab('settings');
+}
+
+function cancelCxEdit() {
+  _cxEditId = null;
+  document.getElementById('cx-name').value = '';
+  document.getElementById('cx-cat').value = '';
+  document.getElementById('cx-icon').value = '';
+  document.getElementById('cx-type').value = 'reps';
+  document.getElementById('cx-cancel-edit').style.display = 'none';
+  const title = document.querySelector('#tab-settings .card:last-child .card-title');
+  if (title) title.textContent = 'Custom Exercises';
+  updateCxTypeFields();
 }
 
 function renderAthleteSettings() {
@@ -1028,15 +1220,27 @@ function getAthleteParam(item, athlete, param) {
 function buildExerciseSelect() {
   const sel = document.getElementById('ex-select');
   const cats = [...new Set(EXERCISES.map(e=>e.cat))];
-  sel.innerHTML = cats.map(cat => {
+  let html = cats.map(cat => {
     const opts = EXERCISES.filter(e=>e.cat===cat).map(e=>`<option value="${e.slug}">${e.icon} ${e.name}</option>`).join('');
     return `<optgroup label="${cat}">${opts}</optgroup>`;
   }).join('');
+  if (customExercises.length) {
+    const cats2 = [...new Set(customExercises.map(e=>e.cat))];
+    html += cats2.map(cat => {
+      const opts = customExercises.filter(e=>e.cat===cat)
+        .map(e=>`<option value="${e.slug}">★ ${e.icon} ${e.name}</option>`).join('');
+      return `<optgroup label="${cat} ★">${opts}</optgroup>`;
+    }).join('');
+  }
+  sel.innerHTML = html;
+}
+
+function findEx(slug) {
+  return EXERCISES.find(e=>e.slug===slug) || customExercises.find(e=>e.slug===slug) || null;
 }
 
 function getSelectedEx() {
-  const slug = document.getElementById('ex-select').value;
-  return EXERCISES.find(e=>e.slug===slug);
+  return findEx(document.getElementById('ex-select').value);
 }
 
 function updateExInputs() {
@@ -1044,7 +1248,7 @@ function updateExInputs() {
   if (!ex) return;
   const el = document.getElementById('ex-inputs');
   const athletes = getSessionAthletes();
-  const canPerAthlete = athletes.length > 1 && ex.type !== 'beep';
+  const canPerAthlete = athletes.length > 1 && ex.type !== 'beep' && ex.type !== 'none';
 
   let html = '';
   if (ex.type === 'sprint') {
@@ -1056,6 +1260,8 @@ function updateExInputs() {
     html = `<div class="row"><div class="field-sm"><label>Distance (${ex.unit||'m'})</label><input type="number" id="ex-reps" value="${ex.defaultReps}" min="1"></div><div class="field-sm"><label>Sets</label><input type="number" id="ex-sets" value="${ex.sets||3}" min="1" max="10"></div></div>`;
   } else if (ex.type === 'beep') {
     html = `<div style="color:var(--text2); font-size:13px; padding:8px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">Uses separate Beep Test app. This will log the level reached.</div>`;
+  } else if (ex.type === 'none') {
+    html = `<div style="color:var(--text2); font-size:13px; padding:8px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">No metric tracked — mark as done during session.</div>`;
   } else {
     html = `<div class="row"><div class="field-sm"><label>Reps</label><input type="number" id="ex-reps" value="${ex.defaultReps||10}" min="1" max="200"></div><div class="field-sm"><label>Sets</label><input type="number" id="ex-sets" value="${ex.sets||3}" min="1" max="10"></div></div>`;
   }
@@ -1102,10 +1308,14 @@ function togglePerAthlete() {
 // ══════════════════════════════════════════════════════════
 function renderGuide(ex) {
   const el = document.getElementById('exercise-guide');
+  if (!ex || !ex.how) {
+    el.innerHTML = '<div style="color:var(--text2); font-size:13px;">No guide available for this exercise.</div>';
+    return;
+  }
   el.innerHTML = `
     <h4>How to do it</h4>
     <ul>${ex.how.map(h=>`<li>${h}</li>`).join('')}</ul>
-    <div class="cue">${ex.cue}</div>
+    ${ex.cue ? `<div class="cue">${ex.cue}</div>` : ''}
     ${ex.avoid ? `<div class="avoid">${ex.avoid}</div>` : ''}
     ${ex.easier ? `<div class="easier">${ex.easier}</div>` : ''}
     ${ex.harder ? `<div class="prog">${ex.harder}</div>` : ''}
@@ -1204,6 +1414,7 @@ function renderSessionList() {
       else if (ex.type==='drill') meta = `${item.sets} × ${item.duration}${ex.unit}`;
       else if (ex.type==='reps') meta = `${item.sets} × ${item.reps} reps`;
       else if (ex.type==='beep') meta = 'Record level reached';
+      else if (ex.type==='none') meta = 'No metric';
     }
     const catColors = {
       'Warm-Up':'var(--text3)','Sprint Drill':'var(--amber)',
@@ -1211,7 +1422,7 @@ function renderSessionList() {
       'Plyometric':'var(--purple)','Strength':'var(--purple)',
       'Fitness Test':'var(--blue)',
     };
-    const c = catColors[ex.cat]||'var(--text2)';
+    const c = catColors[ex.cat]||'var(--orange)';
     return `<div class="ex-item" id="ex-item-${i}">
       <div class="ex-item-header">
         <div>
@@ -1625,6 +1836,19 @@ function renderActionArea(item, res) {
             </div>
           </div>`;
       }).join('')}`;
+  } else if (ex.type==='none') {
+    el.innerHTML = `
+      <div style="text-align:center; padding:16px 0;">
+        <div style="font-size:14px; color:var(--text2); margin-bottom:16px;">No data to record for this exercise.</div>
+        ${roster.map(athlete => {
+          const ar = getAthleteResult(res, athlete);
+          const id = safeId(athlete);
+          return `<div class="athlete-result" style="text-align:left;">
+            <div class="athlete-result-name" style="margin-bottom:8px;">${athlete}</div>
+            <input type="text" placeholder="Notes (optional)..." id="block-notes-${id}" value="${ar.notes||''}" oninput="saveBlockNotes(this.value, '${athlete}')">
+          </div>`;
+        }).join('')}
+      </div>`;
   }
 }
 
@@ -2345,6 +2569,7 @@ async function doLogout() {
     body: JSON.stringify({ action: 'logout' }) }).catch(() => {});
   currentUser = null;
   athletes = [];
+  customExercises = [];
   selectedAthletes = [];
   localStorage.removeItem(ATHLETES_KEY);
   localStorage.removeItem(RUNNER_KEY);
@@ -2648,7 +2873,7 @@ async function loadSessionAsTemplate(id, date) {
     if (!data.ok) throw new Error();
     const s = data.session;
     sessionExercises = (s.exercises || []).map(saved => {
-      const ex = EXERCISES.find(e => e.slug === saved.slug);
+      const ex = findEx(saved.slug);
       if (!ex) return null;
       const item = { ex };
       if (saved.reps) item.reps = saved.reps;
