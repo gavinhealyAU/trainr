@@ -723,17 +723,7 @@ let currentUser = null;
 // ══════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════
-async function initApp() {
-  const user = await checkAuth();
-  if (!user) {
-    document.getElementById('auth-overlay').style.display = 'flex';
-    return;
-  }
-  currentUser = user;
-  document.getElementById('auth-overlay').style.display = 'none';
-  const badge = document.getElementById('user-badge');
-  if (badge) { badge.style.display = 'flex'; document.getElementById('current-user-name').textContent = user.name; }
-
+async function initAfterAuth() {
   await Promise.all([loadAthletes(), loadCustomExercises()]);
   document.getElementById('session-date').value = new Date().toISOString().split('T')[0];
   buildExerciseSelect();
@@ -750,6 +740,19 @@ async function initApp() {
   restoreDraft();
   setupDraftAutosave();
   await checkForSavedSession();
+}
+
+async function initApp() {
+  const user = await checkAuth();
+  if (!user) {
+    document.getElementById('auth-overlay').style.display = 'flex';
+    return;
+  }
+  currentUser = user;
+  document.getElementById('auth-overlay').style.display = 'none';
+  const badge = document.getElementById('user-badge');
+  if (badge) { badge.style.display = 'flex'; document.getElementById('current-user-name').textContent = user.name; }
+  await initAfterAuth();
 }
 window.onload = initApp;
 
@@ -2513,10 +2516,7 @@ async function doLogin() {
       document.getElementById('auth-overlay').style.display = 'none';
       const badge = document.getElementById('user-badge');
       if (badge) { badge.style.display = 'flex'; document.getElementById('current-user-name').textContent = data.user.name; }
-      await loadAthletes();
-      renderAthleteSelect();
-      renderAthleteSettings();
-      await checkForSavedSession();
+      await initAfterAuth();
     } else {
       errEl.textContent = data.error || 'Login failed';
       errEl.style.display = '';
@@ -2550,8 +2550,7 @@ async function doRegister() {
       if (badge) { badge.style.display = 'flex'; document.getElementById('current-user-name').textContent = data.user.name; }
       // Sync existing localStorage athletes to server for new accounts
       if (athletes.length) saveAthletes();
-      renderAthleteSelect();
-      renderAthleteSettings();
+      await initAfterAuth();
     } else {
       errEl.textContent = data.error || 'Registration failed';
       errEl.style.display = '';
